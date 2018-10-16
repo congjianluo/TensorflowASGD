@@ -41,7 +41,8 @@ class AsynchronousStochasticGradientDescent(optimizer.Optimizer):
             self._get_or_make_slot(v, math_ops.cast(0, v.dtype.base_dtype), "step", self._name)
             self._get_or_make_slot(v, math_ops.cast(self._lr, v.dtype.base_dtype), "eta", self._name)
             self._get_or_make_slot(v, math_ops.cast(1, v.dtype.base_dtype), "mu", self._name)
-            self._get_or_make_slot(v, self._broadcast(math_ops.cast(0, v.dtype.base_dtype), v.shape), "ax", self._name)
+            # self._get_or_make_slot(v, self._broadcast(math_ops.cast(0, v.dtype.base_dtype), v.shape), "ax", self._name)
+            self._zeros_slot(v, "ax", self._name)
 
     def _prepare(self):
         # self._lr_t = ops.convert_to_tensor(self._lr, name="learning_rate")
@@ -90,7 +91,6 @@ class AsynchronousStochasticGradientDescent(optimizer.Optimizer):
 
     def _apply_sparse(self, grad, var):
         raise NotImplementedError("Not implement _apply_sparse!")
-
 
     @staticmethod
     def _broadcast(tensor, shape):

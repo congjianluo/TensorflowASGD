@@ -1,4 +1,4 @@
-#Tensorflow ASGD Optimizer
+# Tensorflow ASGD Optimizer
 ## Custom Asynchronous Stochastic Gradient Descent Optimizer in Tensorflow.
 It works like PyTorch ASGD.
 https://pytorch.org/docs/stable/_modules/torch/optim/asgd.html#ASGD
