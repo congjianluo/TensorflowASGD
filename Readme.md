@@ -4,7 +4,7 @@ It works like PyTorch ASGD.
 https://pytorch.org/docs/stable/_modules/torch/optim/asgd.html#ASGD
 ###### You can import it:
 ```
-import TensorflowASGD
+from TensorFlowASGD import AsynchronousStochasticGradientDescent
 ```
 ###### and use replace the optimizer tha you used:
 ```
