@@ -106,6 +106,9 @@ def ASGD():
                                                                prediction_b: optimizer.get_slot(prediction_b,
                                                                                                 "ax").eval()
                                                                }))
+                    for v in tf.trainable_variables():
+                        if optimizer.get_slot(v, "ax") is not None:
+                            print(optimizer.get_slot(v, "ax"))
 
 
 SGD()
