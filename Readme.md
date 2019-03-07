@@ -12,3 +12,6 @@ from TensorFlowASGD import AsynchronousStochasticGradientDescent
 ```
 optimizer = AsynchronousStochasticGradientDescent()
 ```
+
+#### A simple LeNet example:
+![Result.png](LeNet/result.png)

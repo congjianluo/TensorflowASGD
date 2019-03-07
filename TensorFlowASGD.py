@@ -4,16 +4,16 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
-from tensorflow.python.ops import math_ops, state_ops, control_flow_ops
-from tensorflow.python.training import optimizer
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import math_ops, control_flow_ops, resource_variable_ops
+from tensorflow.python.training import optimizer, training_ops
 
 
 class AsynchronousStochasticGradientDescent(optimizer.Optimizer):
     """Optimizer that implements the gradient descent algorithm.
     """
 
-    def __init__(self, lr=1e-2, lambd=1e-4, alpha=0.75, t0=1e6, weight_decay=0, use_locking=False,
-                 name="AsynchronousStochasticGradientDescent"):
+    def __init__(self, learning_rate, t0=0, use_locking=False, name="GradientDescent"):
         """Construct a new gradient descent optimizer.
 
         Args:
@@ -23,74 +23,59 @@ class AsynchronousStochasticGradientDescent(optimizer.Optimizer):
           name: Optional name prefix for the operations created when applying
             gradients. Defaults to "GradientDescent".
         """
-        if not 0.0 <= lr:
-            raise ValueError("Invalid learning rate: {}".format(lr))
-        if not 0.0 <= weight_decay:
-            raise ValueError("Invalid weight_decay value: {}".format(weight_decay))
         super(AsynchronousStochasticGradientDescent, self).__init__(use_locking, name)
-        self._lr = lr
-        self._lambd = lambd
-        self._alpha = alpha
+        self._learning_rate = learning_rate
         self._t0 = t0
-        self._weight_decay = weight_decay
-        self._name = name
-        self.step = 0
 
     def _create_slots(self, var_list):
         for v in var_list:
             self._get_or_make_slot(v, math_ops.cast(0, v.dtype.base_dtype), "step", self._name)
-            self._get_or_make_slot(v, math_ops.cast(self._lr, v.dtype.base_dtype), "eta", self._name)
+            self._get_or_make_slot(v, math_ops.cast(self._learning_rate, v.dtype.base_dtype), "eta", self._name)
             self._get_or_make_slot(v, math_ops.cast(1, v.dtype.base_dtype), "mu", self._name)
-            # self._get_or_make_slot(v, self._broadcast(math_ops.cast(0, v.dtype.base_dtype), v.shape), "ax", self._name)
             self._zeros_slot(v, "ax", self._name)
-
-    def _prepare(self):
-        # self._lr_t = ops.convert_to_tensor(self._lr, name="learning_rate")
-        # self._lambd_t = ops.convert_to_tensor(self._t0, name="lambd")
-        # self._alpha_t = ops.convert_to_tensor(self._t0, name="alpha")
-        return
 
     def _apply_dense(self, grad, var):
         step = self.get_slot(var, "step")
         step_t = step.assign(step + 1)
 
-        eta = self.get_slot(var, "eta")
         mu = self.get_slot(var, "mu")
         ax = self.get_slot(var, "ax")
 
-        grad_update = grad
-        # Not work now.
-        if self._weight_decay != 0:
-            grad_update = grad + self._weight_decay * var
-            grad = grad + self._weight_decay * var
+        var_t = training_ops.apply_gradient_descent(
+            var,
+            math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
+            grad,
+            use_locking=self._use_locking)
 
-        # decay term
-        var_t = (1 - self._lambd * eta) * var
-        # var_update = state_ops.assign(var, self._broadcast(math_ops.cast(0, var.dtype.base_dtype), var.shape))
-        var_update = state_ops.assign(var, var_t - eta * grad)
+        var_T = var_t.op
 
         if mu != 1:
-            ax_t = ax.assign(ax + (var_update - ax) * mu)
+            ax_t = ax.assign(ax + (var_t - ax) * mu)
         else:
-            ax_t = ax.assign(var_update)
-
-        eta_t = eta.assign(self._lr / tf.pow(1 + self._lambd * self._lr * step_t, self._alpha))
-
+            ax_t = ax.assign(var_t)
         mu_t = mu.assign(1 / tf.maximum(math_ops.cast(1, step_t.dtype), step_t - self._t0))
-
-        return control_flow_ops.group(*[var_update, step_t, ax_t, eta_t, mu_t, grad_update])
+        return control_flow_ops.group(*[var_T, step_t, ax_t, mu_t])
 
     def _resource_apply_dense(self, grad, handle):
-        raise NotImplementedError("Not implement _resource_apply_dense!")
+        return training_ops.resource_apply_gradient_descent(
+            handle, math_ops.cast(self._learning_rate_tensor,
+                                  grad.dtype.base_dtype),
+            grad, use_locking=self._use_locking)
 
-    def _resource_apply_sparse_duplicate_indices(self, grad, handle, indices):
-        raise NotImplementedError("Not implement _resource_apply_sparse_duplicate_indices!")
+    def _resource_apply_sparse(self, grad, handle, indices):
+        return resource_variable_ops.resource_scatter_add(
+            handle, indices, -grad * self._learning_rate)
 
     def _apply_sparse_duplicate_indices(self, grad, var):
-        raise NotImplementedError("Not implement _apply_sparse_duplicate_indices!")
+        delta = ops.IndexedSlices(
+            grad.values *
+            math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
+            grad.indices, grad.dense_shape)
+        return var.scatter_sub(delta, use_locking=self._use_locking)
 
-    def _apply_sparse(self, grad, var):
-        raise NotImplementedError("Not implement _apply_sparse!")
+    def _prepare(self):
+        self._learning_rate_tensor = ops.convert_to_tensor(self._learning_rate,
+                                                           name="learning_rate")
 
     @staticmethod
     def _broadcast(tensor, shape):
